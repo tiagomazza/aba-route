@@ -10,42 +10,37 @@ st.set_page_config(
 
 st.title("ABA-Route")
 
-# URL direto (Raw) fixo do ficheiro CSV no GitHub
-GITHUB_URL = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clientes.csv"
+# URLs diretos (Raw) dos ficheiros CSV no GitHub
+URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clientes.csv"
+URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Definição da função para carregar e tratar os dados com cache do Streamlit
+# Função genérica para carregar e tratar qualquer CSV com a limpeza cirúrgica
 @st.cache_data
-def load_data(url, enc):
-    # Carrega o CSV ignorando a primeira linha (header=1) para que a linha seguinte se torne o cabeçalho
+def load_and_clean_csv(url):
     try:
-        df_temp = pd.read_csv(url, sep=",", encoding=enc, header=1)
+        df_temp = pd.read_csv(url, sep=",", encoding=ENCODING, header=1)
         if len(df_temp.columns) == 1:
-            df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
+            df_temp = pd.read_csv(url, sep=";", encoding=ENCODING, header=1)
     except Exception:
-        df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
+        df_temp = pd.read_csv(url, sep=";", encoding=ENCODING, header=1)
 
-    # Limpeza geral de segurança em todas as colunas de texto
+    # Limpeza cirúrgica de células para eliminar o formato '="valor"' ou quaisquer aspas e iguais residuais
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            df_temp[col] = df_temp[col].astype(str).str.strip()
+            def limpar_celula(val):
+                if pd.isna(val):
+                    return ""
+                s = str(val).strip()
+                if s.startswith('="') and s.endswith('"'):
+                    return s[2:-1]  # Retira os 2 primeiros e o último caractere
+                if s.startswith('='):
+                    s = s[1:]
+                return s.replace('"', '').replace('=', '').strip()
 
-    # Tratamento específico para remover o padrão exacto '="' no início e '"' no fim nas colunas críticas
-    colunas_alvo = ['cliente', 'telefone', 'telemóvel', 'telemovel']
-    for col in df_temp.columns:
-        # Verifica se o nome da coluna corresponde (ignorando maiúsculas/minúsculas e acentos)
-        col_lower = col.strip().lower()
-        if any(alvo in col_lower for alvo in colunas_alvo):
-            df_temp[col] = (
-                df_temp[col]
-                .astype(str)
-                .str.replace(r'^="', '', regex=True)  # Remove '="' do início
-                .str.replace(r'"$', '', regex=True)   # Remove '"' do final
-                .str.replace(r'=', '', regex=True)    # Remove qualquer '=' residual
-                .str.strip()
-            )
+            df_temp[col] = df_temp[col].apply(limpar_celula)
 
-    # Tratamento da coluna 'inactivo' (0 -> "não" e 1 -> "sim")
+    # Tratamento opcional da coluna 'inactivo' se existir
     col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]
     if col_inactivo:
         target_col = col_inactivo[0]
@@ -55,14 +50,19 @@ def load_data(url, enc):
 
     return df_temp
 
+# Carregamento dos dados
 try:
-    df = load_data(GITHUB_URL, ENCODING)
-    st.success("Ficheiro clientes.csv carregado e processado com sucesso!")
+    st.subheader("📁 Ficheiro: Clientes")
+    df_clientes = load_and_clean_csv(URL_CLIENTES)
+    st.success("clientes.csv carregado e processado com sucesso!")
+    st.dataframe(df_clientes, use_container_width=True)
 
     st.markdown("---")
 
-    st.subheader("Visualização dos Dados")
-    st.dataframe(df, use_container_width=True)
+    st.subheader("📁 Ficheiro: SAGE")
+    df_sage = load_and_clean_csv(URL_SAGE)
+    st.success("SAGE.csv carregado e processado com sucesso!")
+    st.dataframe(df_sage, use_container_width=True)
 
 except Exception as e:
-    st.error(f"Erro ao carregar o ficheiro CSV do GitHub: {e}")
+    st.error(f"Erro ao carregar os ficheiros CSV do GitHub: {e}")

@@ -18,14 +18,16 @@ def load_data(url, enc):
     except Exception:
         df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
 
-    # Elimina completamente todos os caracteres '=' e '"' de todas as colunas de texto
+    # Limpeza profunda para remover padrões de fórmulas do Excel (='...', ="...", =, ")
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
             df_temp[col] = (
                 df_temp[col]
                 .astype(str)
-                .str.replace('"', '', regex=False)
+                .str.replace('="', '', regex=False)
+                .str.replace('="', '', regex=False)
                 .str.replace('=', '', regex=False)
+                .str.replace('"', '', regex=False)
                 .str.strip()
             )
 

@@ -1,6 +1,13 @@
 import streamlit as st
 import pandas as pd
 
+st.set_page_config(
+    page_title="ABA-Route",
+    page_icon="🗺️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 st.title("ABA-Route")
 
 # URL direto (Raw) fixo do ficheiro CSV no GitHub
@@ -18,16 +25,23 @@ def load_data(url, enc):
     except Exception:
         df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
 
-    # Limpeza avançada por Regex para remover padrões exatos de texto formatado do Excel (ex: ="4488")
+    # Limpeza cirúrgica e radical de células para eliminar o formato '="valor"' ou quaisquer aspas e iguais residuais
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            df_temp[col] = (
-                df_temp[col]
-                .astype(str)
-                .str.replace(r'^[="]+|["]+$', '', regex=True)  # Remove símbolos '="' no início e '"' no fim
-                .str.replace(r'[\"\=]', '', regex=True)       # Remove quaisquer aspas ou iguais residuais
-                .str.strip()                                 # Remove espaços em branco
-            )
+            def limpar_celula(val):
+                if pd.isna(val):
+                    return ""
+                s = str(val).strip()
+                # Se a célula estiver no formato exato '="VALOR"' (começa com =" e acaba com ")
+                if s.startswith('="') and s.endswith('"'):
+                    return s[2:-1]  # Retira os 2 primeiros (="'") e o último caractere ('"')
+                # Se começar apenas com o sinal de igual
+                if s.startswith('='):
+                    s = s[1:]
+                # Remove quaisquer resíduos de aspas ou iguais restantes e espaços em branco
+                return s.replace('"', '').replace('=', '').strip()
+
+            df_temp[col] = df_temp[col].apply(limpar_celula)
 
     # Tratamento da coluna 'inactivo' (procura por correspondência exata de nome ignorando maiúsculas/minúsculas)
     col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]
@@ -46,7 +60,7 @@ try:
     st.markdown("---")
 
     st.subheader("Visualização dos Dados")
-    st.dataframe(df)
+    st.dataframe(df, use_container_width=True)
 
 except Exception as e:
     st.error(f"Erro ao carregar o ficheiro CSV do GitHub: {e}")

@@ -25,23 +25,16 @@ def load_data(url, enc):
     except Exception:
         df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
 
-    # Limpeza cirúrgica e radical de células para eliminar o formato '="valor"' ou quaisquer aspas e iguais residuais
+    # Limpeza avançada por Regex para remover padrões de fórmulas do Excel (ex: ="4488", ="...", etc.)
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            def limpar_celula(val):
-                if pd.isna(val):
-                    return ""
-                s = str(val).strip()
-                # Se a célula estiver no formato exato '="VALOR"' (começa com =" e acaba com ")
-                if s.startswith('="') and s.endswith('"'):
-                    return s[2:-1]  # Retira os 2 primeiros (="'") e o último caractere ('"')
-                # Se começar apenas com o sinal de igual
-                if s.startswith('='):
-                    s = s[1:]
-                # Remove quaisquer resíduos de aspas ou iguais restantes e espaços em branco
-                return s.replace('"', '').replace('=', '').strip()
-
-            df_temp[col] = df_temp[col].apply(limpar_celula)
+            df_temp[col] = (
+                df_temp[col]
+                .astype(str)
+                .str.replace(r'^[="]+|["]+$', '', regex=True)  # Remove '="' no início e '"' no fim
+                .str.replace(r'[\"\=]', '', regex=True)       # Remove quaisquer aspas ou iguais residuais
+                .str.strip()                                 # Remove espaços em branco
+            )
 
     # Tratamento da coluna 'inactivo' (procura por correspondência exata de nome ignorando maiúsculas/minúsculas)
     col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]

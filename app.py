@@ -15,15 +15,37 @@ URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clie
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Função genérica para carregar e tratar qualquer CSV com a limpeza cirúrgica
+# Função robusta para carregar e tratar qualquer CSV ignorando linhas problemáticas e aplicando limpeza cirúrgica
 @st.cache_data
 def load_and_clean_csv(url):
-    try:
-        df_temp = pd.read_csv(url, sep=",", encoding=ENCODING, header=1)
-        if len(df_temp.columns) == 1:
-            df_temp = pd.read_csv(url, sep=";", encoding=ENCODING, header=1)
-    except Exception:
-        df_temp = pd.read_csv(url, sep=";", encoding=ENCODING, header=1)
+    df_temp = None
+    
+    # Tenta ler com diferentes separadores usando o engine python e ignorando linhas corrompidas
+    for sep in [",", ";"]:
+        try:
+            df_temp = pd.read_csv(
+                url, 
+                sep=sep, 
+                encoding=ENCODING, 
+                header=1, 
+                engine="python", 
+                on_bad_lines="skip"
+            )
+            # Se encontrou mais do que 1 coluna, o separador está correto
+            if len(df_temp.columns) > 1:
+                break
+        except Exception:
+            continue
+
+    if df_temp is None or df_temp.empty:
+        # Fallback se falhar com header=1
+        df_temp = pd.read_csv(
+            url, 
+            sep=",", 
+            encoding=ENCODING, 
+            engine="python", 
+            on_bad_lines="skip"
+        )
 
     # Limpeza cirúrgica de células para eliminar o formato '="valor"' ou quaisquer aspas e iguais residuais
     for col in df_temp.columns:
@@ -50,7 +72,7 @@ def load_and_clean_csv(url):
 
     return df_temp
 
-# Carregamento dos dados
+# Carregamento e exibição dos dados na aplicação
 try:
     st.subheader("📁 Ficheiro: Clientes")
     df_clientes = load_and_clean_csv(URL_CLIENTES)

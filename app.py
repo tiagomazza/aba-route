@@ -10,7 +10,7 @@ ENCODING = "latin-1"
 # Definição da função para carregar e tratar os dados com cache do Streamlit
 @st.cache_data
 def load_data(url, enc):
-    # Ignora a primeira linha (header=1) para que a linha subsequente seja o cabeçalho das colunas
+    # Carrega o CSV ignorando a primeira linha (header=1) para que a linha seguinte se torne o cabeçalho
     try:
         df_temp = pd.read_csv(url, sep=",", encoding=enc, header=1)
         if len(df_temp.columns) == 1:
@@ -18,17 +18,24 @@ def load_data(url, enc):
     except Exception:
         df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
 
-    # Elimina os caracteres '=' e '"' de todas as colunas de texto (observações)
+    # Elimina completamente todos os caracteres '=' e '"' de todas as colunas de texto
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            df_temp[col] = df_temp[col].astype(str).str.replace('=', '', regex=False).str.replace('"', '', regex=False)
+            df_temp[col] = (
+                df_temp[col]
+                .astype(str)
+                .str.replace('"', '', regex=False)
+                .str.replace('=', '', regex=False)
+                .str.strip()
+            )
 
-    # Procura e substitui na coluna 'inactivo' (0 -> "não" e 1 -> "sim")
+    # Tratamento da coluna 'inactivo' (procura por correspondência exata de nome ignorando maiúsculas/minúsculas)
     col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]
     if col_inactivo:
         target_col = col_inactivo[0]
         df_temp[target_col] = df_temp[target_col].astype(str).str.strip()
-        df_temp[target_col] = df_temp[target_col].replace({'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim'})
+        mapa_inactivo = {'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim'}
+        df_temp[target_col] = df_temp[target_col].replace(mapa_inactivo)
 
     return df_temp
 

@@ -13,9 +13,8 @@ try:
 
     st.markdown("---")
 
-    show_raw:
-        st.subheader("Visualização dos Dados")
-        st.dataframe(df)
+    st.subheader("Visualização dos Dados")
+    st.dataframe(df)
 
 except Exception as e:
     st.error(f"Erro ao carregar o ficheiro CSV do GitHub: {e}")

@@ -18,14 +18,15 @@ def load_data(url, enc):
     except Exception:
         df_temp = pd.read_csv(url, sep=";", encoding=enc, header=1)
 
-    # Limpeza direta e total de aspas e sinais de igual em todas as colunas de texto usando Regex
+    # Limpeza avançada por Regex para remover padrões exatos de texto formatado do Excel (ex: ="4488")
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
             df_temp[col] = (
                 df_temp[col]
                 .astype(str)
-                .str.replace(r'[\"\=]', '', regex=True)  # Remove qualquer " ou = em todo o texto
-                .str.strip()                             # Remove espaços vazios à volta
+                .str.replace(r'^[="]+|["]+$', '', regex=True)  # Remove símbolos '="' no início e '"' no fim
+                .str.replace(r'[\"\=]', '', regex=True)       # Remove quaisquer aspas ou iguais residuais
+                .str.strip()                                 # Remove espaços em branco
             )
 
     # Tratamento da coluna 'inactivo' (procura por correspondência exata de nome ignorando maiúsculas/minúsculas)

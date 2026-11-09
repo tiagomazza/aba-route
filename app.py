@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+from datetime import datetime, timedelta
 
 st.set_page_config(
     page_title="ABA-Route",
@@ -16,7 +17,7 @@ URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clie
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Função robusta para carregar o ficheiro Clientes (com limpeza de números)
+# Função para carregar o ficheiro Clientes
 @st.cache_data
 def load_clientes(url):
     df_temp = None
@@ -47,21 +48,24 @@ def load_clientes(url):
     for col in df_temp.columns:
         df_temp[col] = df_temp[col].fillna("").astype(str).str.replace('nan', '', case=False)
 
+    # Limpar a coluna cliente e telefone para considerar somente números
     for col in df_temp.columns:
         col_lower = col.strip().lower()
         if any(alvo in col_lower for alvo in ['cliente', 'telefone', 'telemóvel', 'telemovel']):
             df_temp[col] = df_temp[col].apply(lambda x: "".join(re.findall(r'\d+', x)))
 
-    col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]
+    # Filtrar inactivo = "não" e ocultar a coluna
+    col_inactivo = next((c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']), None)
     if col_inactivo:
-        target_col = col_inactivo[0]
-        df_temp[target_col] = df_temp[target_col].astype(str).str.strip()
-        mapa_inactivo = {'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim'}
-        df_temp[target_col] = df_temp[target_col].replace(mapa_inactivo)
+        df_temp[col_inactivo] = df_temp[col_inactivo].astype(str).str.strip().str.lower()
+        mapa_inactivo = {'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim', 'nao': 'não'}
+        df_temp[col_inactivo] = df_temp[col_inactivo].replace(mapa_inactivo)
+        df_temp = df_temp[df_temp[col_inactivo] == 'não'].copy()
+        df_temp = df_temp.drop(columns=[col_inactivo])
 
     return df_temp
 
-# Função para carregar o ficheiro SAGE sem filtros/transformações agressivas de dados
+# Função para carregar o ficheiro SAGE
 @st.cache_data
 def load_sage(url):
     df_temp = None
@@ -89,6 +93,11 @@ def load_sage(url):
             on_bad_lines="skip"
         )
 
+    # Converter coluna de cliente para conter somente números também no SAGE se existir
+    for col in df_temp.columns:
+        if col.strip().lower() == 'cliente':
+            df_temp[col] = df_temp[col].fillna("").astype(str).apply(lambda x: "".join(re.findall(r'\d+', x)))
+
     return df_temp
 
 # Carregamento dos dados
@@ -99,37 +108,105 @@ try:
     # --- PAINEL LATERAL: FILTROS DO SAGE ---
     st.sidebar.header("🎚️ Filtros SAGE")
 
-    # Filtro para Documento (coluna Doc. ou equivalente)
+    # 1. Filtro de Documentos (Padrão: "FT")
     col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
     docs_selecionados = []
     if col_doc_sage:
         docs_unicos = sorted(df_sage[col_doc_sage].dropna().astype(str).unique())
-        docs_selecionados = st.sidebar.multiselect("📄 Documento (SAGE)", options=docs_unicos, default=docs_unicos)
+        # Tenta definir "FT" por defeito se existir na lista
+        default_docs = [d for d in docs_unicos if 'ft' in d.lower()]
+        if not default_docs:
+            default_docs = docs_unicos
+        docs_selecionados = st.sidebar.multiselect("📄 Documento (SAGE)", options=docs_unicos, default=default_docs)
 
-    # Filtro para Vendedor (coluna Vendedor [Documentos GC Linha] ou equivalente)
+    # 2. Filtro de Vendedor
     col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
     vendedores_selecionados = []
     if col_vend_sage:
         vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
 
-    # Aplicação dos filtros ao DataFrame do SAGE
+    # 3. Filtro de Descrição [Zonas geográficas]
+    col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
+    zonas_selecionadas = []
+    if col_zona_sage:
+        zonas_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
+        zonas_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zonas geográficas]", options=zonas_unicas, default=zonas_unicas)
+
+    # 4. Filtro de Datas (Padrão: últimos 3 meses)
+    col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
+    if col_data_sage:
+        df_sage[col_data_sage] = pd.to_datetime(df_sage[col_data_sage], errors='coerce')
+        min_date = df_sage[col_data_sage].min()
+        max_date = df_sage[col_data_sage].max()
+        
+        if pd.isna(min_date):
+            min_date = datetime.now() - timedelta(days=90)
+        if pd.isna(max_date):
+            max_date = datetime.now()
+
+        default_start = max_date - timedelta(days=90)
+        default_end = max_date
+
+        data_inicio, data_fim = st.sidebar.date_input(
+            "📅 Intervalo de Datas (Últimos 3 Meses por defeito)",
+            value=(default_start, default_end),
+            min_value=min_date,
+            max_value=max_date
+        )
+
+    # --- APLICAÇÃO DOS FILTROS AO SAGE ---
     df_sage_filt = df_sage.copy()
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
     if col_vend_sage and vendedores_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_vend_sage].astype(str).isin(vendedores_selecionados)]
+    if col_zona_sage and zonas_selecionadas:
+        df_sage_filt = df_sage_filt[df_sage_filt[col_zona_sage].astype(str).isin(zonas_selecionadas)]
+    if col_data_sage and 'data_inicio' in locals() and 'data_fim' in locals():
+        df_sage_filt = df_sage_filt[
+            (df_sage_filt[col_data_sage] >= pd.to_datetime(data_inicio)) & 
+            (df_sage_filt[col_data_sage] <= pd.to_datetime(data_fim))
+        ]
+
+    # Seleção exata das colunas exigidas para o SAGE (Data, Doc., Valor, Vendedor, Cliente)
+    colunas_desejadas = []
+    for col in df_sage_filt.columns:
+        c_low = col.strip().lower()
+        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente']):
+            colunas_desejadas.append(col)
+
+    if colunas_desejadas:
+        df_sage_exibicao = df_sage_filt[colunas_desejadas]
+    else:
+        df_sage_exibicao = df_sage_filt
+
+    # --- NOVO DATAFRAME AGREGADO (Concatenar/Agrupar valores pelo Cliente) ---
+    col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
+    col_cliente_sage = next((c for c in df_sage_filt.columns if 'cliente' in c.strip().lower()), None)
+
+    if col_valor_sage and col_cliente_sage:
+        # Converte a coluna de valor para numérica para somar corretamente
+        df_sage_filt[col_valor_sage] = pd.to_numeric(df_sage_filt[col_valor_sage], errors='coerce').fillna(0)
+        df_agregado = df_sage_filt.groupby(col_cliente_sage, as_index=False)[col_valor_sage].sum()
+    else:
+        df_agregado = pd.DataFrame()
 
     # --- EXIBIÇÃO NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes")
-    st.success("clientes.csv carregado e processado com sucesso!")
+    st.subheader("📁 Ficheiro: Clientes (Ativos / Inativo Oculto)")
+    st.success(f"clientes.csv processado com sucesso! ({len(df_clientes)} registos)")
     st.dataframe(df_clientes, use_container_width=True)
 
     st.markdown("---")
 
     st.subheader("📁 Ficheiro: SAGE (Filtrado)")
-    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_filt)} linhas exibidas)")
-    st.dataframe(df_sage_filt, use_container_width=True)
+    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
+    st.dataframe(df_sage_exibicao, use_container_width=True)
+
+    if not df_agregado.empty:
+        st.markdown("---")
+        st.subheader("📊 Resumo Agregado por Cliente (SAGE)")
+        st.dataframe(df_agregado, use_container_width=True)
 
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")

@@ -105,17 +105,19 @@ try:
     df_clientes = load_clientes(URL_CLIENTES)
     df_sage = load_sage(URL_SAGE)
 
-    # Identificar nome exato da coluna Localidade no ficheiro clientes
-    col_localidade_cli = next((c for c in df_clientes.columns if 'Descrição [Zonas Geográficas]' in c.strip().lower()), None)
+    # Identificar nome exato da coluna de Zona Geográfica no ficheiro clientes
+    col_zona_cli = next((c for c in df_clientes.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
+    if not col_zona_cli:
+        col_zona_cli = next((c for c in df_clientes.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
 
-    # --- PAINEL LATERAL: FILTROS ---
+    # --- PAINEL LATERAL: FILTROS DE CLIENTES ---
     st.sidebar.header("🎚️ Filtros de Clientes")
     
-    # 1. Filtro por Localidade (Clientes)
-    localidades_selecionadas = []
-    if col_localidade_cli:
-        localidades_unicas = sorted(df_clientes[col_localidade_cli].dropna().astype(str).unique())
-        localidades_selecionadas = st.sidebar.multiselect("🏘️ Localidade (Clientes)", options=localidades_unicas, default=localidades_unicas)
+    # 1. Filtro por "Descrição [Zonas Geográficas]" (Clientes)
+    zonas_cli_selecionadas = []
+    if col_zona_cli:
+        zonas_cli_unicas = sorted(df_clientes[col_zona_cli].dropna().astype(str).unique())
+        zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zonas Geográficas] (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
 
     st.sidebar.markdown("---")
     st.sidebar.header("🎚️ Filtros SAGE")
@@ -137,15 +139,15 @@ try:
         vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
 
-    # 4. Filtro de "Descrição [Zona Geográfica]"
+    # 4. Filtro de "Descrição [Zona Geográfica]" (SAGE)
     col_zona_sage = next((c for c in df_sage.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
     if not col_zona_sage:
         col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
     
-    zonas_selecionadas = []
+    zonas_sage_selecionadas = []
     if col_zona_sage:
-        zonas_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
-        zonas_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica]", options=zonas_unicas, default=zonas_unicas)
+        zonas_sage_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
+        zonas_sage_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica] (SAGE)", options=zonas_sage_unicas, default=zonas_sage_unicas)
 
     # 5. Filtro de Datas (Padrão: últimos 3 meses)
     col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
@@ -176,10 +178,10 @@ try:
     qtd_sem_mov = st.sidebar.number_input("Clientes sem Movimentação (Valor = 0)", min_value=0, value=3, step=1)
 
     # --- APLICAÇÃO DOS FILTROS ---
-    # Filtrar Clientes por Localidade
+    # Filtrar Clientes por Descrição [Zonas Geográficas]
     df_clientes_filt = df_clientes.copy()
-    if col_localidade_cli and localidades_selecionadas:
-        df_clientes_filt = df_clientes_filt[df_clientes_filt[col_localidade_cli].astype(str).isin(localidades_selecionadas)]
+    if col_zona_cli and zonas_cli_selecionadas:
+        df_clientes_filt = df_clientes_filt[df_clientes_filt[col_zona_cli].astype(str).isin(zonas_cli_selecionadas)]
 
     # Filtrar SAGE
     df_sage_filt = df_sage.copy()
@@ -187,8 +189,8 @@ try:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
     if col_vend_sage and vendedores_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_vend_sage].astype(str).isin(vendedores_selecionados)]
-    if col_zona_sage and zonas_selecionadas:
-        df_sage_filt = df_sage_filt[df_sage_filt[col_zona_sage].astype(str).isin(zonas_selecionadas)]
+    if col_zona_sage and zonas_sage_selecionadas:
+        df_sage_filt = df_sage_filt[df_sage_filt[col_zona_sage].astype(str).isin(zonas_sage_selecionadas)]
     if col_data_sage and 'data_inicio' in locals() and 'data_fim' in locals():
         df_sage_filt = df_sage_filt[
             (df_sage_filt[col_data_sage] >= pd.to_datetime(data_inicio)) & 
@@ -229,40 +231,4 @@ try:
         
         # Faz o merge com o DataFrame de Clientes usando as colunas correspondentes
         df_clientes_vendas[col_cliente_clientes] = df_clientes_vendas[col_cliente_clientes].astype(str).str.strip()
-        df_agregado[col_cliente_sage] = df_agregado[col_cliente_sage].astype(str).str.strip()
-        
-        df_clientes_vendas = pd.merge(
-            df_clientes_vendas, 
-            df_agregado, 
-            left_on=col_cliente_clientes, 
-            right_on=col_cliente_sage, 
-            how='left'
-        )
-        if col_cliente_sage in df_clientes_vendas.columns and col_cliente_sage != col_cliente_clientes:
-            df_clientes_vendas = df_clientes_vendas.drop(columns=[col_cliente_sage])
-            
-        # Preenche com 0 os clientes que não tiveram vendas no período filtrado
-        df_clientes_vendas['Venda no Periodo'] = df_clientes_vendas['Venda no Periodo'].fillna(0)
-
-        # Separar clientes com movimentação (vendas > 0) e sem movimentação (vendas == 0) conforme os limites definidos
-        df_com_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] > 0].head(qtd_com_mov)
-        df_sem_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] == 0].head(qtd_sem_mov)
-        
-        # Concatenar para exibição final de acordo com a quantidade configurada
-        df_clientes_vendas_final = pd.concat([df_com_mov, df_sem_mov]).reset_index(drop=True)
-    else:
-        df_clientes_vendas_final = df_clientes_vendas
-
-    # --- EXIBIÇÃO NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Ativos / Inativo Oculto)")
-    st.success(f"Clientes processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
-    st.dataframe(df_clientes_vendas_final, use_container_width=True)
-
-    st.markdown("---")
-
-    st.subheader("📁 Ficheiro: SAGE (Filtrado)")
-    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
-    st.dataframe(df_sage_exibicao, use_container_width=True)
-
-except Exception as e:
-    st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")
+        df_agregado[col

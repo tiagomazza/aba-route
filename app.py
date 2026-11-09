@@ -16,7 +16,7 @@ URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clie
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Função robusta para carregar o ficheiro Clientes (Filtra inactivo = "não" e oculta a coluna)
+# Função robusta para carregar o ficheiro Clientes (com limpeza de números)
 @st.cache_data
 def load_clientes(url):
     df_temp = None
@@ -52,18 +52,16 @@ def load_clientes(url):
         if any(alvo in col_lower for alvo in ['cliente', 'telefone', 'telemóvel', 'telemovel']):
             df_temp[col] = df_temp[col].apply(lambda x: "".join(re.findall(r'\d+', x)))
 
-    # Identificar e filtrar a coluna inactivo/inativo
-    col_inactivo = next((c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']), None)
+    col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]
     if col_inactivo:
-        df_temp[col_inactivo] = df_temp[col_inactivo].astype(str).str.strip().str.lower()
-        mapa_inactivo = {'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim', 'nao': 'não'}
-        df_temp[col_inactivo] = df_temp[col_inactivo].replace(mapa_inactivo)
-        df_temp = df_temp[df_temp[col_inactivo] == 'não'].copy()
-        df_temp = df_temp.drop(columns=[col_inactivo])
+        target_col = col_inactivo[0]
+        df_temp[target_col] = df_temp[target_col].astype(str).str.strip()
+        mapa_inactivo = {'0': 'não', '1': 'sim', '0.0': 'não', '1.0': 'sim'}
+        df_temp[target_col] = df_temp[target_col].replace(mapa_inactivo)
 
     return df_temp
 
-# Função para carregar o ficheiro SAGE
+# Função para carregar o ficheiro SAGE sem filtros/transformações agressivas de dados
 @st.cache_data
 def load_sage(url):
     df_temp = None
@@ -101,40 +99,30 @@ try:
     # --- PAINEL LATERAL: FILTROS DO SAGE ---
     st.sidebar.header("🎚️ Filtros SAGE")
 
+    # Filtro para Documento (coluna Doc. ou equivalente)
     col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
-    col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
-
     docs_selecionados = []
     if col_doc_sage:
         docs_unicos = sorted(df_sage[col_doc_sage].dropna().astype(str).unique())
         docs_selecionados = st.sidebar.multiselect("📄 Documento (SAGE)", options=docs_unicos, default=docs_unicos)
 
+    # Filtro para Vendedor (coluna Vendedor [Documentos GC Linha] ou equivalente)
+    col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
     vendedores_selecionados = []
     if col_vend_sage:
         vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
 
-    # Aplicação dos filtros ao SAGE
+    # Aplicação dos filtros ao DataFrame do SAGE
     df_sage_filt = df_sage.copy()
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
     if col_vend_sage and vendedores_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_vend_sage].astype(str).isin(vendedores_selecionados)]
 
-    # Seleção exata e segura das colunas pretendidas para o SAGE (com base nos nomes reais do ficheiro)
-    colunas_desejadas = []
-    for col in df_sage_filt.columns:
-        c_low = col.strip().lower()
-        # Procura colunas correspondentes a Data, Doc., Valor, Vendedor e Cliente
-        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente']):
-            colunas_desejadas.append(col)
-
-    if colunas_desejadas:
-        df_sage_filt = df_sage_filt[colunas_desejadas]
-
     # --- EXIBIÇÃO NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes (Ativos / Inativo Oculto)")
-    st.success(f"clientes.csv processado com sucesso! ({len(df_clientes)} registos)")
+    st.subheader("📁 Ficheiro: Clientes")
+    st.success("clientes.csv carregado e processado com sucesso!")
     st.dataframe(df_clientes, use_container_width=True)
 
     st.markdown("---")

@@ -106,7 +106,7 @@ try:
     df_sage = load_sage(URL_SAGE)
 
     # Identificar nome exato da coluna Localidade no ficheiro clientes
-    col_localidade_cli = next((c for c in df_clientes.columns if 'localidade' in c.strip().lower()), None)
+    col_localidade_cli = next((c for c in df_clientes.columns if 'Descrição [Zonas Geográficas]' in c.strip().lower()), None)
 
     # --- PAINEL LATERAL: FILTROS ---
     st.sidebar.header("🎚️ Filtros de Clientes")

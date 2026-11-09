@@ -231,4 +231,40 @@ try:
         
         # Faz o merge com o DataFrame de Clientes usando as colunas correspondentes
         df_clientes_vendas[col_cliente_clientes] = df_clientes_vendas[col_cliente_clientes].astype(str).str.strip()
-        df_agregado[col
+        df_agregado[col_cliente_sage] = df_agregado[col_cliente_sage].astype(str).str.strip()
+        
+        df_clientes_vendas = pd.merge(
+            df_clientes_vendas, 
+            df_agregado, 
+            left_on=col_cliente_clientes, 
+            right_on=col_cliente_sage, 
+            how='left'
+        )
+        if col_cliente_sage in df_clientes_vendas.columns and col_cliente_sage != col_cliente_clientes:
+            df_clientes_vendas = df_clientes_vendas.drop(columns=[col_cliente_sage])
+            
+        # Preenche com 0 os clientes que não tiveram vendas no período filtrado
+        df_clientes_vendas['Venda no Periodo'] = df_clientes_vendas['Venda no Periodo'].fillna(0)
+
+        # Separar clientes com movimentação (vendas > 0) e sem movimentação (vendas == 0) conforme os limites definidos
+        df_com_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] > 0].head(qtd_com_mov)
+        df_sem_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] == 0].head(qtd_sem_mov)
+        
+        # Concatenar para exibição final de acordo com a quantidade configurada
+        df_clientes_vendas_final = pd.concat([df_com_mov, df_sem_mov]).reset_index(drop=True)
+    else:
+        df_clientes_vendas_final = df_clientes_vendas
+
+    # --- EXIBIÇÃO NA INTERFACE ---
+    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Ativos / Inativo Oculto)")
+    st.success(f"Clientes processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
+    st.dataframe(df_clientes_vendas_final, use_container_width=True)
+
+    st.markdown("---")
+
+    st.subheader("📁 Ficheiro: SAGE (Filtrado)")
+    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
+    st.dataframe(df_sage_exibicao, use_container_width=True)
+
+except Exception as e:
+    st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")

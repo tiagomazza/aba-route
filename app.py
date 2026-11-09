@@ -16,7 +16,7 @@ URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clie
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Função robusta para carregar e tratar qualquer CSV ignorando linhas problemáticas e aplicando limpeza cirúrgica
+# Função robusta para carregar e tratar qualquer CSV ignorando linhas problemáticas e aplicando limpeza estricta
 @st.cache_data
 def load_and_clean_csv(url):
     df_temp = None
@@ -32,14 +32,12 @@ def load_and_clean_csv(url):
                 engine="python", 
                 on_bad_lines="skip"
             )
-            # Se encontrou mais do que 1 coluna, o separador está correto
             if len(df_temp.columns) > 1:
                 break
         except Exception:
             continue
 
     if df_temp is None or df_temp.empty:
-        # Fallback se falhar com header=1
         df_temp = pd.read_csv(
             url, 
             sep=",", 
@@ -48,15 +46,25 @@ def load_and_clean_csv(url):
             on_bad_lines="skip"
         )
 
-    # Limpeza total e agressiva de aspas e sinais de igual em todas as colunas de texto
+    # Limpeza geral para as restantes colunas
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            # Converte para string e remove qualquer aspa (") ou sinal de igual (=) em qualquer posição
             df_temp[col] = (
                 df_temp[col]
                 .astype(str)
                 .str.replace(r'[\"\=]', '', regex=True)
                 .str.strip()
+            )
+
+    # Tratamento estricto: Mantém apenas os números nas colunas especificadas
+    colunas_apenas_numeros = ['cliente', 'telefone', 'telemóvel', 'telemovel']
+    for col in df_temp.columns:
+        col_lower = col.strip().lower()
+        if any(alvo in col_lower for alvo in colunas_apenas_numeros):
+            df_temp[col] = (
+                df_temp[col]
+                .astype(str)
+                .apply(lambda x: "".join(re.findall(r'\d+', x)))  # Extrai unicamente os dígitos numéricos
             )
 
     # Tratamento opcional da coluna 'inactivo' se existir

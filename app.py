@@ -105,10 +105,22 @@ try:
     df_clientes = load_clientes(URL_CLIENTES)
     df_sage = load_sage(URL_SAGE)
 
-    # --- PAINEL LATERAL: FILTROS DO SAGE ---
+    # Identificar nome exato da coluna Localidade no ficheiro clientes
+    col_localidade_cli = next((c for c in df_clientes.columns if 'localidade' in c.strip().lower()), None)
+
+    # --- PAINEL LATERAL: FILTROS ---
+    st.sidebar.header("🎚️ Filtros de Clientes")
+    
+    # 1. Filtro por Localidade (Clientes)
+    localidades_selecionadas = []
+    if col_localidade_cli:
+        localidades_unicas = sorted(df_clientes[col_localidade_cli].dropna().astype(str).unique())
+        localidades_selecionadas = st.sidebar.multiselect("🏘️ Localidade (Clientes)", options=localidades_unicas, default=localidades_unicas)
+
+    st.sidebar.markdown("---")
     st.sidebar.header("🎚️ Filtros SAGE")
 
-    # 1. Filtro de Documentos (Padrão: "FT")
+    # 2. Filtro de Documentos (Padrão: "FT")
     col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
     docs_selecionados = []
     if col_doc_sage:
@@ -118,21 +130,24 @@ try:
             default_docs = docs_unicos
         docs_selecionados = st.sidebar.multiselect("📄 Documento (SAGE)", options=docs_unicos, default=default_docs)
 
-    # 2. Filtro de Vendedor
+    # 3. Filtro de Vendedor
     col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
     vendedores_selecionados = []
     if col_vend_sage:
         vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
 
-    # 3. Filtro de Descrição [Zonas geográficas]
-    col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
+    # 4. Filtro de "Descrição [Zona Geográfica]"
+    col_zona_sage = next((c for c in df_sage.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
+    if not col_zona_sage:
+        col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
+    
     zonas_selecionadas = []
     if col_zona_sage:
         zonas_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
         zonas_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica]", options=zonas_unicas, default=zonas_unicas)
 
-    # 4. Filtro de Datas (Padrão: últimos 3 meses)
+    # 5. Filtro de Datas (Padrão: últimos 3 meses)
     col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
     if col_data_sage:
         df_sage[col_data_sage] = pd.to_datetime(df_sage[col_data_sage], errors='coerce')
@@ -156,11 +171,17 @@ try:
 
     st.sidebar.markdown("---")
     st.sidebar.header("📊 Filtros de Quantidade de Clientes")
-    # 5. Campos para filtrar quantos clientes com e sem movimentação deseja mostrar (padrão = 3)
+    # 6. Campos para filtrar quantos clientes com e sem movimentação deseja mostrar (padrão = 3)
     qtd_com_mov = st.sidebar.number_input("Clientes com Movimentação (Valor > 0)", min_value=0, value=3, step=1)
     qtd_sem_mov = st.sidebar.number_input("Clientes sem Movimentação (Valor = 0)", min_value=0, value=3, step=1)
 
-    # --- APLICAÇÃO DOS FILTROS AO SAGE ---
+    # --- APLICAÇÃO DOS FILTROS ---
+    # Filtrar Clientes por Localidade
+    df_clientes_filt = df_clientes.copy()
+    if col_localidade_cli and localidades_selecionadas:
+        df_clientes_filt = df_clientes_filt[df_clientes_filt[col_localidade_cli].astype(str).isin(localidades_selecionadas)]
+
+    # Filtrar SAGE
     df_sage_filt = df_sage.copy()
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
@@ -189,9 +210,9 @@ try:
     # --- NOVO DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
     col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
-    col_cliente_clientes = next((c for c in df_clientes.columns if 'cliente' in c.strip().lower()), None)
+    col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower()), None)
 
-    df_clientes_vendas = df_clientes.copy()
+    df_clientes_vendas = df_clientes_filt.copy()
     if col_valor_sage and col_cliente_sage and col_cliente_clientes:
         # Limpar e converter a coluna de valor para número de forma segura
         df_sage_filt[col_valor_sage] = (

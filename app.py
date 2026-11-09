@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 
 st.set_page_config(
     page_title="ABA-Route",
@@ -47,20 +48,16 @@ def load_and_clean_csv(url):
             on_bad_lines="skip"
         )
 
-    # Limpeza cirúrgica de células para eliminar o formato '="valor"' ou quaisquer aspas e iguais residuais
+    # Limpeza total e agressiva de aspas e sinais de igual em todas as colunas de texto
     for col in df_temp.columns:
         if df_temp[col].dtype == 'object':
-            def limpar_celula(val):
-                if pd.isna(val):
-                    return ""
-                s = str(val).strip()
-                if s.startswith('="') and s.endswith('"'):
-                    return s[2:-1]  # Retira os 2 primeiros e o último caractere
-                if s.startswith('='):
-                    s = s[1:]
-                return s.replace('"', '').replace('=', '').strip()
-
-            df_temp[col] = df_temp[col].apply(limpar_celula)
+            # Converte para string e remove qualquer aspa (") ou sinal de igual (=) em qualquer posição
+            df_temp[col] = (
+                df_temp[col]
+                .astype(str)
+                .str.replace(r'[\"\=]', '', regex=True)
+                .str.strip()
+            )
 
     # Tratamento opcional da coluna 'inactivo' se existir
     col_inactivo = [c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']]

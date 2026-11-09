@@ -113,7 +113,6 @@ try:
     docs_selecionados = []
     if col_doc_sage:
         docs_unicos = sorted(df_sage[col_doc_sage].dropna().astype(str).unique())
-        # Tenta definir "FT" por defeito se existir na lista
         default_docs = [d for d in docs_unicos if 'ft' in d.lower()]
         if not default_docs:
             default_docs = docs_unicos
@@ -181,14 +180,23 @@ try:
     else:
         df_sage_exibicao = df_sage_filt
 
-    # --- NOVO DATAFRAME AGREGADO (Concatenar/Agrupar valores pelo Cliente) ---
+    # --- NOVO DATAFRAME AGREGADO (Soma dos Valores [Documentos GC Lin] por Cliente) ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
     col_cliente_sage = next((c for c in df_sage_filt.columns if 'cliente' in c.strip().lower()), None)
 
     if col_valor_sage and col_cliente_sage:
-        # Converte a coluna de valor para numérica para somar corretamente
+        # Limpa e converte a coluna de valor para número de forma segura (substitui vírgulas por pontos se necessário)
+        df_sage_filt[col_valor_sage] = (
+            df_sage_filt[col_valor_sage]
+            .astype(str)
+            .str.replace(',', '.', regex=False)
+            .apply(lambda x: "".join(re.findall(r'[\d\.\-]', x)))
+        )
         df_sage_filt[col_valor_sage] = pd.to_numeric(df_sage_filt[col_valor_sage], errors='coerce').fillna(0)
+        
+        # Agrupa pelo cliente e faz a SOMA exata de todos os valores
         df_agregado = df_sage_filt.groupby(col_cliente_sage, as_index=False)[col_valor_sage].sum()
+        df_agregado.rename(columns={col_valor_sage: 'Soma Total Valor [Documentos GC Lin]'}, inplace=True)
     else:
         df_agregado = pd.DataFrame()
 
@@ -205,7 +213,7 @@ try:
 
     if not df_agregado.empty:
         st.markdown("---")
-        st.subheader("📊 Resumo Agregado por Cliente (SAGE)")
+        st.subheader("📊 Resumo Agregado por Cliente (Soma de Valor [Documentos GC Lin])")
         st.dataframe(df_agregado, use_container_width=True)
 
 except Exception as e:

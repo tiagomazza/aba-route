@@ -180,12 +180,14 @@ try:
     else:
         df_sage_exibicao = df_sage_filt
 
-    # --- NOVO DATAFRAME AGREGADO (Soma dos Valores [Documentos GC Lin] por Cliente) ---
+    # --- NOVO DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
-    col_cliente_sage = next((c for c in df_sage_filt.columns if 'cliente' in c.strip().lower()), None)
+    col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
+    col_cliente_clientes = next((c for c in df_clientes.columns if 'cliente' in c.strip().lower()), None)
 
-    if col_valor_sage and col_cliente_sage:
-        # Limpa e converte a coluna de valor para número de forma segura (substitui vírgulas por pontos se necessário)
+    df_clientes_vendas = df_clientes.copy()
+    if col_valor_sage and col_cliente_sage and col_cliente_clientes:
+        # Limpar e converter a coluna de valor para número de forma segura
         df_sage_filt[col_valor_sage] = (
             df_sage_filt[col_valor_sage]
             .astype(str)
@@ -194,27 +196,38 @@ try:
         )
         df_sage_filt[col_valor_sage] = pd.to_numeric(df_sage_filt[col_valor_sage], errors='coerce').fillna(0)
         
-        # Agrupa pelo cliente e faz a SOMA exata de todos os valores
+        # Agrega a soma do Valor [Documentos GC Lin] por Cliente no SAGE
         df_agregado = df_sage_filt.groupby(col_cliente_sage, as_index=False)[col_valor_sage].sum()
-        df_agregado.rename(columns={col_valor_sage: 'Soma Total Valor [Documentos GC Lin]'}, inplace=True)
-    else:
-        df_agregado = pd.DataFrame()
+        df_agregado.rename(columns={col_valor_sage: 'Venda no Periodo'}, inplace=True)
+        
+        # Faz o merge com o DataFrame de Clientes usando as colunas correspondentes
+        df_clientes_vendas[col_cliente_clientes] = df_clientes_vendas[col_cliente_clientes].astype(str).str.strip()
+        df_agregado[col_cliente_sage] = df_agregado[col_cliente_sage].astype(str).str.strip()
+        
+        df_clientes_vendas = pd.merge(
+            df_clientes_vendas, 
+            df_agregado, 
+            left_on=col_cliente_clientes, 
+            right_on=col_cliente_sage, 
+            how='left'
+        )
+        # Se a coluna duplicada do cliente do sage veio no merge, remove-la
+        if col_cliente_sage in df_clientes_vendas.columns and col_cliente_sage != col_cliente_clientes:
+            df_clientes_vendas = df_clientes_vendas.drop(columns=[col_cliente_sage])
+            
+        # Preenche com 0 os clientes que não tiveram vendas no período filtrado
+        df_clientes_vendas['Venda no Periodo'] = df_clientes_vendas['Venda no Periodo'].fillna(0)
 
     # --- EXIBIÇÃO NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes (Ativos / Inativo Oculto)")
-    st.success(f"clientes.csv processado com sucesso! ({len(df_clientes)} registos)")
-    st.dataframe(df_clientes, use_container_width=True)
+    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Ativos / Inativo Oculto)")
+    st.success(f"Clientes processados e cruzados com sucesso! ({len(df_clientes_vendas)} registos)")
+    st.dataframe(df_clientes_vendas, use_container_width=True)
 
     st.markdown("---")
 
     st.subheader("📁 Ficheiro: SAGE (Filtrado)")
     st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
     st.dataframe(df_sage_exibicao, use_container_width=True)
-
-    if not df_agregado.empty:
-        st.markdown("---")
-        st.subheader("📊 Resumo Agregado por Cliente (Soma de Valor [Documentos GC Lin])")
-        st.dataframe(df_agregado, use_container_width=True)
 
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")

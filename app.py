@@ -142,14 +142,14 @@ try:
     
     st.sidebar.markdown("---")
 
-        default_start = max_date - timedelta(days=90)
-    default_end = max_date
-    data_inicio, data_fim = st.sidebar.date_input(
-        "📅 Intervalo de Datas",
-        value=(default_start, default_end),
-        min_value=min_date,
-        max_value=max_date
-    )
+    default_start = max_date - timedelta(days=90)
+default_end = max_date
+data_inicio, data_fim = st.sidebar.date_input(
+    "📅 Intervalo de Datas",
+    value=(default_start, default_end),
+    min_value=min_date,
+    max_value=max_date
+)
 
     docs_selecionados = []
     if col_doc_sage:

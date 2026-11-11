@@ -128,15 +128,23 @@ try:
     # --- PAINEL LATERAL ---
     st.sidebar.header("🎚️ Filtros")
     
+    # 1. Filtro Vendedor
     vendedores_selecionados = []
     if col_vend_sage:
         vendedores_unicos = sorted(df_sage_filt[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor", options=vendedores_unicos, default=vendedores_unicos)
 
+    # 2. Filtro Zonas Geográficas (Clientes)
     zonas_cli_selecionadas = []
     if col_zona_cli:
         zonas_cli_unicas = sorted(df_clientes[col_zona_cli].dropna().astype(str).unique())
-        zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Zonas Geográficas", options=zonas_cli_unicas, default=zonas_cli_unicas)
+        zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Zonas Geográficas (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
+
+    # 3. Filtro Zonas Geográficas (SAGE) -> Adicionado para resolver o erro
+    zonas_sage_selecionadas = []
+    if col_zona_sage:
+        zonas_sage_unicas = sorted(df_sage_filt[col_zona_sage].dropna().astype(str).unique())
+        zonas_sage_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica] (SAGE)", options=zonas_sage_unicas, default=zonas_sage_unicas)
 
     st.sidebar.header("📊 Quantidade de Clientes")
     qtd_com_mov = st.sidebar.number_input("Com Movimentação", min_value=0, value=3, step=1)

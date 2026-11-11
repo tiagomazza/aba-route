@@ -12,12 +12,12 @@ st.set_page_config(
 
 st.title("ABA-Route")
 
-# URLs diretos (Raw) dos ficheiros CSV no GitHub
+# URLs diretos (Raw) dos ficheiros CSV no GitHub[cite: 1]
 URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clientes.csv"
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
 
-# Função para carregar o ficheiro Clientes com tratamento e limpeza de colunas
+# Função para carregar o ficheiro Clientes
 @st.cache_data
 def load_clientes(url):
     df_temp = None
@@ -45,31 +45,14 @@ def load_clientes(url):
             on_bad_lines="skip"
         )
 
-    # Limpar vestígios de nan
     for col in df_temp.columns:
         df_temp[col] = df_temp[col].fillna("").astype(str).str.replace('nan', '', case=False)
 
-    # Identificar colunas essenciais para garantir concatenação correta (Cliente e Nome)
-    col_cliente_raw = next((c for c in df_temp.columns if c.strip().lower() in ['cliente', 'terceiro']), None)
-    col_nome_raw = next((c for c in df_temp.columns if 'nome' in c.strip().lower()), None)
+    for col in df_temp.columns:
+        col_lower = col.strip().lower()
+        if any(alvo in col_lower for alvo in ['cliente', 'telefone', 'telemóvel', 'telemovel']):
+            df_temp[col] = df_temp[col].apply(lambda x: "".join(re.findall(r'\d+', x)))
 
-    if col_cliente_raw and col_nome_raw:
-        # Limpar o código do cliente (remover =, ", etc. para ficar limpo)
-        df_temp["_codigo_limpo"] = (
-            df_temp[col_cliente_raw]
-            .astype(str)
-            .str.replace(r'^[="]+|["]+$', '', regex=True)
-            .str.replace(r'[\"\=]', '', regex=True)
-            .str.strip()
-        )
-        df_temp["_nome_limpo"] = df_temp[col_nome_raw].astype(str).str.strip()
-        
-        # Criar a coluna unificada e formatada de Cliente
-        df_temp['Cliente_Formatado'] = df_temp["_codigo_limpo"] + " - " + df_temp["_nome_limpo"]
-        # Substituir ou atualizar a coluna principal de cliente mantendo o formato limpo
-        df_temp[col_cliente_raw] = df_temp["_codigo_limpo"]
-
-    # Filtrar inactivo = "não" e ocultar a coluna
     col_inactivo = next((c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']), None)
     if col_inactivo:
         df_temp[col_inactivo] = df_temp[col_inactivo].astype(str).str.strip().str.lower()
@@ -80,7 +63,7 @@ def load_clientes(url):
 
     return df_temp
 
-# Função para carregar o ficheiro SAGE sem alterar dados brutos
+# Função para carregar o ficheiro SAGE
 @st.cache_data
 def load_sage(url):
     df_temp = None
@@ -108,19 +91,16 @@ def load_sage(url):
             on_bad_lines="skip"
         )
 
-    # Converter coluna de cliente no SAGE para conter somente números limpos para cruzar corretamente
     for col in df_temp.columns:
         if col.strip().lower() == 'cliente':
             df_temp[col] = df_temp[col].fillna("").astype(str).apply(lambda x: "".join(re.findall(r'\d+', x)))
 
     return df_temp
 
-# Carregamento dos dados
 try:
     df_clientes = load_clientes(URL_CLIENTES)
     df_sage = load_sage(URL_SAGE)
 
-    # Identificar colunas exatas
     col_zona_cli = next((c for c in df_clientes.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
     if not col_zona_cli:
         col_zona_cli = next((c for c in df_clientes.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
@@ -142,20 +122,18 @@ try:
         min_date = datetime.now() - timedelta(days=90)
         max_date = datetime.now()
 
-    # --- PAINEL LATERAL: FILTROS ---
+    # --- PAINEL LATERAL ---
     st.sidebar.header("🎚️ Filtros")
     
-    # 1. Filtro por Vendedor (SAGE)
     vendedores_selecionados = []
     if col_vend_sage:
         vendedores_unicos = sorted(df_sage_filt[col_vend_sage].dropna().astype(str).unique())
         vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor", options=vendedores_unicos, default=vendedores_unicos)
 
-    # 2. Filtro por Zonas Geográficas (Clientes)
     zonas_cli_selecionadas = []
     if col_zona_cli:
         zonas_cli_unicas = sorted(df_clientes[col_zona_cli].dropna().astype(str).unique())
-        zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Zonas Geográficas (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
+        zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zonas Geográficas] (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
 
     st.sidebar.header("📊 Quantidade de Clientes")
     qtd_com_mov = st.sidebar.number_input("Com Movimentação", min_value=0, value=3, step=1)
@@ -199,7 +177,7 @@ try:
     # --- CRUZAÇÃO E DATAFRAME FINAL ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
     col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
-    col_cliente_clientes = next((c for c in df_clientes_filt.columns if c.strip().lower() in ['cliente', 'terceiro']), None)
+    col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower()), None)
 
     df_clientes_vendas = df_clientes_filt.copy()
     if col_valor_sage and col_cliente_sage and col_cliente_clientes:
@@ -236,10 +214,28 @@ try:
     else:
         df_clientes_vendas_final = df_clientes_vendas
 
-    # --- EXIBIÇÃO ---
-    st.subheader("📁 Clientes com Venda no Período")
-    st.success(f"Dados processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
+    # Seleção exata das colunas exigidas para exibição do SAGE (Data, Doc., Valor, Vendedor, Cliente)
+    colunas_desejadas = []
+    for col in df_sage_filt.columns:
+        c_low = col.strip().lower()
+        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente']):
+            colunas_desejadas.append(col)
+
+    if colunas_desejadas:
+        df_sage_exibicao = df_sage_filt[colunas_desejadas]
+    else:
+        df_sage_exibicao = df_sage_filt
+
+    # --- EXIBIÇÃO NA INTERFACE ---
+    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Ativos / Inativo Oculto)")
+    st.success(f"Clientes processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
     st.dataframe(df_clientes_vendas_final, use_container_width=True)
+
+    st.markdown("---")
+
+    st.subheader("📁 Ficheiro: SAGE (Filtrado)")
+    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
+    st.dataframe(df_sage_exibicao, use_container_width=True)
 
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")

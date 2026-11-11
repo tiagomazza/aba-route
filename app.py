@@ -110,7 +110,7 @@ try:
     if not col_zona_cli:
         col_zona_cli = next((c for c in df_clientes.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
 
-    # --- PAINEL LATERAL: FILTROS DE CLIENTES ---
+    # --- PAINEL LATERAL: FILTROS ---
     st.sidebar.header("🎚️ Filtros de Clientes")
     
     # 1. Filtro por "Descrição [Zonas Geográficas]" (Clientes)
@@ -120,7 +120,7 @@ try:
         zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zonas Geográficas] (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
 
     st.sidebar.markdown("---")
-    st.sidebar.header("🎚️ Filtros SAGE")
+    st.sidebar.header("🎚️ Filtros SAGE (Afetam o cálculo de vendas)")
 
     # 2. Filtro de Documentos (Padrão: "FT")
     col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
@@ -173,17 +173,14 @@ try:
 
     st.sidebar.markdown("---")
     st.sidebar.header("📊 Filtros de Quantidade de Clientes")
-    # 6. Campos para filtrar quantos clientes com e sem movimentação deseja mostrar (padrão = 3)
     qtd_com_mov = st.sidebar.number_input("Clientes com Movimentação (Valor > 0)", min_value=0, value=3, step=1)
     qtd_sem_mov = st.sidebar.number_input("Clientes sem Movimentação (Valor = 0)", min_value=0, value=3, step=1)
 
     # --- APLICAÇÃO DOS FILTROS ---
-    # Filtrar Clientes por Descrição [Zonas Geográficas]
     df_clientes_filt = df_clientes.copy()
     if col_zona_cli and zonas_cli_selecionadas:
         df_clientes_filt = df_clientes_filt[df_clientes_filt[col_zona_cli].astype(str).isin(zonas_cli_selecionadas)]
 
-    # Filtrar SAGE
     df_sage_filt = df_sage.copy()
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
@@ -197,26 +194,13 @@ try:
             (df_sage_filt[col_data_sage] <= pd.to_datetime(data_fim))
         ]
 
-    # Seleção exata das colunas exigidas para o SAGE (Data, Doc., Valor, Vendedor, Cliente)
-    colunas_desejadas = []
-    for col in df_sage_filt.columns:
-        c_low = col.strip().lower()
-        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente']):
-            colunas_desejadas.append(col)
-
-    if colunas_desejadas:
-        df_sage_exibicao = df_sage_filt[colunas_desejadas]
-    else:
-        df_sage_exibicao = df_sage_filt
-
-    # --- NOVO DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
+    # --- DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
     col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
     col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower()), None)
 
     df_clientes_vendas = df_clientes_filt.copy()
     if col_valor_sage and col_cliente_sage and col_cliente_clientes:
-        # Limpar e converter a coluna de valor para número de forma segura
         df_sage_filt[col_valor_sage] = (
             df_sage_filt[col_valor_sage]
             .astype(str)
@@ -225,11 +209,9 @@ try:
         )
         df_sage_filt[col_valor_sage] = pd.to_numeric(df_sage_filt[col_valor_sage], errors='coerce').fillna(0)
         
-        # Agrega a soma do Valor [Documentos GC Lin] por Cliente no SAGE
         df_agregado = df_sage_filt.groupby(col_cliente_sage, as_index=False)[col_valor_sage].sum()
         df_agregado.rename(columns={col_valor_sage: 'Venda no Periodo'}, inplace=True)
         
-        # Faz o merge com o DataFrame de Clientes usando as colunas correspondentes
         df_clientes_vendas[col_cliente_clientes] = df_clientes_vendas[col_cliente_clientes].astype(str).str.strip()
         df_agregado[col_cliente_sage] = df_agregado[col_cliente_sage].astype(str).str.strip()
         
@@ -243,28 +225,19 @@ try:
         if col_cliente_sage in df_clientes_vendas.columns and col_cliente_sage != col_cliente_clientes:
             df_clientes_vendas = df_clientes_vendas.drop(columns=[col_cliente_sage])
             
-        # Preenche com 0 os clientes que não tiveram vendas no período filtrado
         df_clientes_vendas['Venda no Periodo'] = df_clientes_vendas['Venda no Periodo'].fillna(0)
 
-        # Separar clientes com movimentação (vendas > 0) e sem movimentação (vendas == 0) conforme os limites definidos
         df_com_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] > 0].head(qtd_com_mov)
         df_sem_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] == 0].head(qtd_sem_mov)
         
-        # Concatenar para exibição final de acordo com a quantidade configurada
         df_clientes_vendas_final = pd.concat([df_com_mov, df_sem_mov]).reset_index(drop=True)
     else:
         df_clientes_vendas_final = df_clientes_vendas
 
-    # --- EXIBIÇÃO NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Ativos / Inativo Oculto)")
-    st.success(f"Clientes processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
+    # --- EXIBIÇÃO APENAS DO DATAFRAME DE CLIENTES NA INTERFACE ---
+    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Filtrados)")
+    st.success(f"Dados processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
     st.dataframe(df_clientes_vendas_final, use_container_width=True)
-
-    st.markdown("---")
-
-    st.subheader("📁 Ficheiro: SAGE (Filtrado)")
-    st.success(f"SAGE.csv carregado com sucesso! ({len(df_sage_exibicao)} linhas exibidas)")
-    st.dataframe(df_sage_exibicao, use_container_width=True)
 
 except Exception as e:
     st.error(f"Erro ao carregar ou processar os ficheiros CSV do GitHub: {e}")

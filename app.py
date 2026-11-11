@@ -12,10 +12,25 @@ st.set_page_config(
 
 st.title("ABA-Route")
 
-# URLs diretos (Raw) dos ficheiros CSV no GitHub[cite: 1]
+# URLs diretos (Raw) dos ficheiros CSV no GitHub
 URL_CLIENTES = "https://raw.githubusercontent.com/tiagomazza/aba-route/main/clientes.csv"
 URL_SAGE = "https://raw.githubusercontent.com/tiagomazza/aba-sales/main/data/SAGE.csv"
 ENCODING = "latin-1"
+
+# Função auxiliar robusta para limpar e padronizar códigos de cliente
+def limpar_codigo_cliente(val):
+    if pd.isna(val):
+        return ""
+    s = str(val).strip()
+    if s.endswith('.0'):
+        s = s[:-2]
+    digitos = "".join(re.findall(r'\d+', s))
+    if not digitos:
+        return ""
+    try:
+        return str(int(digitos))
+    except ValueError:
+        return digitos
 
 # Função para carregar o ficheiro Clientes
 @st.cache_data
@@ -48,11 +63,13 @@ def load_clientes(url):
     for col in df_temp.columns:
         df_temp[col] = df_temp[col].fillna("").astype(str).str.replace('nan', '', case=False)
 
+    # Limpar colunas de cliente e telefone
     for col in df_temp.columns:
         col_lower = col.strip().lower()
         if any(alvo in col_lower for alvo in ['cliente', 'telefone', 'telemóvel', 'telemovel']):
-            df_temp[col] = df_temp[col].apply(lambda x: "".join(re.findall(r'\d+', x)))
+            df_temp[col] = df_temp[col].apply(limpar_codigo_cliente)
 
+    # Filtrar inactivo = "não" e ocultar a coluna
     col_inactivo = next((c for c in df_temp.columns if c.strip().lower() in ['inactivo', 'inativo']), None)
     if col_inactivo:
         df_temp[col_inactivo] = df_temp[col_inactivo].astype(str).str.strip().str.lower()
@@ -93,7 +110,7 @@ def load_sage(url):
 
     for col in df_temp.columns:
         if col.strip().lower() == 'cliente':
-            df_temp[col] = df_temp[col].fillna("").astype(str).apply(lambda x: "".join(re.findall(r'\d+', x)))
+            df_temp[col] = df_temp[col].apply(limpar_codigo_cliente)
 
     return df_temp
 
@@ -214,7 +231,7 @@ try:
     else:
         df_clientes_vendas_final = df_clientes_vendas
 
-    # Seleção exata das colunas exigidas para exibição do SAGE (Data, Doc., Valor, Vendedor, Cliente)
+    # Seleção exata das colunas exigidas para exibição do SAGE
     colunas_desejadas = []
     for col in df_sage_filt.columns:
         c_low = col.strip().lower()

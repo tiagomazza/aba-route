@@ -117,14 +117,28 @@ try:
         col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
     col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
 
+    # --- PASSO 1: PRÉ-PROCESSAMENTO DO SAGE PARA ALIMENTAR OS FILTROS DO PAINEL LATERAL ---
+    df_sage_filt = df_sage.copy()
+    if col_data_sage:
+        df_sage_filt[col_data_sage] = pd.to_datetime(df_sage_filt[col_data_sage], errors='coerce')
+        min_date = df_sage_filt[col_data_sage].min()
+        max_date = df_sage_filt[col_data_sage].max()
+        if pd.isna(min_date):
+            min_date = datetime.now() - timedelta(days=90)
+        if pd.isna(max_date):
+            max_date = datetime.now()
+    else:
+        min_date = datetime.now() - timedelta(days=90)
+        max_date = datetime.now()
+
     # --- PAINEL LATERAL: FILTROS (Vendedor acima da Zona Geográfica) ---
     st.sidebar.header("🎚️ Filtros")
 
-    # 1. Filtro por Vendedor (SAGE) em primeiro lugar
+    # 1. Filtro por Vendedor (SAGE) em primeiro lugar, lendo a partir do df_sage
     vendedores_selecionados = []
     if col_vend_sage:
-        vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
-        vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
+        vendedores_unicos = sorted(df_sage_filt[col_vend_sage].dropna().astype(str).unique())
+        vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor", options=vendedores_unicos, default=vendedores_unicos)
 
     # 2. Filtro por Descrição [Zonas Geográficas] (Clientes) logo abaixo
     zonas_cli_selecionadas = []
@@ -138,7 +152,7 @@ try:
     # 3. Filtro de Documentos (Padrão: "FT")
     docs_selecionados = []
     if col_doc_sage:
-        docs_unicos = sorted(df_sage[col_doc_sage].dropna().astype(str).unique())
+        docs_unicos = sorted(df_sage_filt[col_doc_sage].dropna().astype(str).unique())
         default_docs = [d for d in docs_unicos if 'ft' in d.lower()]
         if not default_docs:
             default_docs = docs_unicos
@@ -147,42 +161,25 @@ try:
     # 4. Filtro de Descrição [Zona Geográfica] (SAGE)
     zonas_sage_selecionadas = []
     if col_zona_sage:
-        zonas_sage_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
+        zonas_sage_unicas = sorted(df_sage_filt[col_zona_sage].dropna().astype(str).unique())
         zonas_sage_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica] (SAGE)", options=zonas_sage_unicas, default=zonas_sage_unicas)
 
     # 5. Filtro de Datas (Padrão: últimos 3 meses)
-    data_inicio, data_fim = None, None
-    if col_data_sage:
-        df_sage[col_data_sage] = pd.to_datetime(df_sage[col_data_sage], errors='coerce')
-        min_date = df_sage[col_data_sage].min()
-        max_date = df_sage[col_data_sage].max()
-        
-        if pd.isna(min_date):
-            min_date = datetime.now() - timedelta(days=90)
-        if pd.isna(max_date):
-            max_date = datetime.now()
-
-        default_start = max_date - timedelta(days=90)
-        default_end = max_date
-
-        data_inicio, data_fim = st.sidebar.date_input(
-            "📅 Intervalo de Datas (Últimos 3 Meses por defeito)",
-            value=(default_start, default_end),
-            min_value=min_date,
-            max_value=max_date
-        )
+    default_start = max_date - timedelta(days=90)
+    default_end = max_date
+    data_inicio, data_fim = st.sidebar.date_input(
+        "📅 Intervalo de Datas (Últimos 3 Meses por defeito)",
+        value=(default_start, default_end),
+        min_value=min_date,
+        max_value=max_date
+    )
 
     st.sidebar.markdown("---")
     st.sidebar.header("📊 Filtros de Quantidade de Clientes")
     qtd_com_mov = st.sidebar.number_input("Clientes com Movimentação (Valor > 0)", min_value=0, value=3, step=1)
     qtd_sem_mov = st.sidebar.number_input("Clientes sem Movimentação (Valor = 0)", min_value=0, value=3, step=1)
 
-    # --- APLICAÇÃO DOS FILTROS ---
-    df_clientes_filt = df_clientes.copy()
-    if col_zona_cli and zonas_cli_selecionadas:
-        df_clientes_filt = df_clientes_filt[df_clientes_filt[col_zona_cli].astype(str).isin(zonas_cli_selecionadas)]
-
-    df_sage_filt = df_sage.copy()
+    # --- APLICAÇÃO EFETIVA DOS FILTROS NO SAGE ---
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
     if col_vend_sage and vendedores_selecionados:
@@ -194,6 +191,11 @@ try:
             (df_sage_filt[col_data_sage] >= pd.to_datetime(data_inicio)) & 
             (df_sage_filt[col_data_sage] <= pd.to_datetime(data_fim))
         ]
+
+    # --- APLICAÇÃO DOS FILTROS EM CLIENTES ---
+    df_clientes_filt = df_clientes.copy()
+    if col_zona_cli and zonas_cli_selecionadas:
+        df_clientes_filt = df_clientes_filt[df_clientes_filt[col_zona_cli].astype(str).isin(zonas_cli_selecionadas)]
 
     # --- CONSTRUÇÃO E FILTRAGEM DIRETA DE df_clientes_vendas_final ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)

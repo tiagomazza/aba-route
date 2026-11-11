@@ -110,21 +110,34 @@ try:
     if not col_zona_cli:
         col_zona_cli = next((c for c in df_clientes.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
 
+    # Identificar colunas do SAGE para os filtros
+    col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
+    col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
+    col_zona_sage = next((c for c in df_sage.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
+    if not col_zona_sage:
+        col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
+    col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
+
     # --- PAINEL LATERAL: FILTROS ---
-    st.sidebar.header("🎚️ Filtros de Clientes")
+    st.sidebar.header("🎚️ Filtros de Clientes e Vendas")
     
-    # 1. Filtro por "Descrição [Zonas Geográficas]" (Clientes)
+    # 1. Filtro por Vendedor (SAGE) posicionado ACIMA da Zona Geográfica
+    vendedores_selecionados = []
+    vendedores_unicos = []
+    if col_vend_sage:
+        vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
+        vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
+
+    # 2. Filtro por "Descrição [Zonas Geográficas]" (Clientes)
     zonas_cli_selecionadas = []
     if col_zona_cli:
         zonas_cli_unicas = sorted(df_clientes[col_zona_cli].dropna().astype(str).unique())
         zonas_cli_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zonas Geográficas] (Clientes)", options=zonas_cli_unicas, default=zonas_cli_unicas)
 
     st.sidebar.markdown("---")
-    st.sidebar.header("🎚️ Filtros SAGE")
+    st.sidebar.header("🎚️ Outros Filtros SAGE")
 
-    # 2. Filtro de Documentos (Padrão: "FT")
-    col_doc_sage = next((c for c in df_sage.columns if c.strip().lower() in ['doc', 'documento', 'doc.']), None)
-    docs_unicos = []
+    # 3. Filtro de Documentos (Padrão: "FT")
     docs_selecionados = []
     if col_doc_sage:
         docs_unicos = sorted(df_sage[col_doc_sage].dropna().astype(str).unique())
@@ -133,27 +146,13 @@ try:
             default_docs = docs_unicos
         docs_selecionados = st.sidebar.multiselect("📄 Documento (SAGE)", options=docs_unicos, default=default_docs)
 
-    # 3. Filtro de Vendedor
-    col_vend_sage = next((c for c in df_sage.columns if 'vendedor' in c.strip().lower()), None)
-    vendedores_unicos = []
-    vendedores_selecionados = []
-    if col_vend_sage:
-        vendedores_unicos = sorted(df_sage[col_vend_sage].dropna().astype(str).unique())
-        vendedores_selecionados = st.sidebar.multiselect("🦸 Vendedor (SAGE)", options=vendedores_unicos, default=vendedores_unicos)
-
     # 4. Filtro de "Descrição [Zona Geográfica]" (SAGE)
-    col_zona_sage = next((c for c in df_sage.columns if 'descrição' in c.strip().lower() and 'zona' in c.strip().lower()), None)
-    if not col_zona_sage:
-        col_zona_sage = next((c for c in df_sage.columns if 'zona' in c.strip().lower() or 'descrição' in c.strip().lower()), None)
-    
-    zonas_sage_unicas = []
     zonas_sage_selecionadas = []
     if col_zona_sage:
         zonas_sage_unicas = sorted(df_sage[col_zona_sage].dropna().astype(str).unique())
         zonas_sage_selecionadas = st.sidebar.multiselect("🌍 Descrição [Zona Geográfica] (SAGE)", options=zonas_sage_unicas, default=zonas_sage_unicas)
 
     # 5. Filtro de Datas (Padrão: últimos 3 meses)
-    col_data_sage = next((c for c in df_sage.columns if 'data' in c.strip().lower()), None)
     data_inicio, data_fim = None, None
     if col_data_sage:
         df_sage[col_data_sage] = pd.to_datetime(df_sage[col_data_sage], errors='coerce')
@@ -180,11 +179,12 @@ try:
     qtd_com_mov = st.sidebar.number_input("Clientes com Movimentação (Valor > 0)", min_value=0, value=3, step=1)
     qtd_sem_mov = st.sidebar.number_input("Clientes sem Movimentação (Valor = 0)", min_value=0, value=3, step=1)
 
-    # --- APLICAÇÃO DOS FILTROS ---
+    # --- APLICAÇÃO DOS FILTROS NO DATAFRAME DE CLIENTES ---
     df_clientes_filt = df_clientes.copy()
     if col_zona_cli and zonas_cli_selecionadas:
         df_clientes_filt = df_clientes_filt[df_clientes_filt[col_zona_cli].astype(str).isin(zonas_cli_selecionadas)]
 
+    # --- APLICAÇÃO DOS FILTROS NO SAGE ---
     df_sage_filt = df_sage.copy()
     if col_doc_sage and docs_selecionados:
         df_sage_filt = df_sage_filt[df_sage_filt[col_doc_sage].astype(str).isin(docs_selecionados)]
@@ -198,7 +198,7 @@ try:
             (df_sage_filt[col_data_sage] <= pd.to_datetime(data_fim))
         ]
 
-    # --- DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
+    # --- CRIAÇÃO DO DATAFRAME DE CLIENTES COM "Venda no Periodo" ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
     col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
     col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower()), None)
@@ -232,25 +232,14 @@ try:
         df_clientes_vendas['Venda no Periodo'] = df_clientes_vendas['Venda no Periodo'].fillna(0)
 
         df_com_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] > 0].head(qtd_com_mov)
+        df_sem_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] == 0].head(qtd_sem_mov)
         
-        # Verificar se existem filtros SAGE ativos que reduzem o universo de dados
-        filtros_sage_ativos = (
-            (col_vend_sage and len(vendedores_selecionados) < len(vendedores_unicos)) or
-            (col_doc_sage and len(docs_selecionados) < len(docs_unicos)) or
-            (col_zona_sage and len(zonas_sage_selecionadas) < len(zonas_sage_unicas))
-        )
-        
-        if filtros_sage_ativos:
-            # Se houver filtros restritivos no SAGE, exibe apenas os clientes com movimentação correspondentes
-            df_clientes_vendas_final = df_com_mov.reset_index(drop=True)
-        else:
-            df_sem_mov = df_clientes_vendas[df_clientes_vendas['Venda no Periodo'] == 0].head(qtd_sem_mov)
-            df_clientes_vendas_final = pd.concat([df_com_mov, df_sem_mov]).reset_index(drop=True)
+        df_clientes_vendas_final = pd.concat([df_com_mov, df_sem_mov]).reset_index(drop=True)
     else:
         df_clientes_vendas_final = df_clientes_vendas
 
     # --- EXIBIÇÃO APENAS DO DATAFRAME DE CLIENTES NA INTERFACE ---
-    st.subheader("📁 Ficheiro: Clientes com Venda no Período (Filtrados)")
+    st.subheader("📁 Clientes com Venda no Período (Filtrados)")
     st.success(f"Dados processados e filtrados com sucesso! ({len(df_clientes_vendas_final)} registos exibidos)")
     st.dataframe(df_clientes_vendas_final, use_container_width=True)
 

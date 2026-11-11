@@ -63,7 +63,7 @@ def load_clientes(url):
     for col in df_temp.columns:
         df_temp[col] = df_temp[col].fillna("").astype(str).str.replace('nan', '', case=False)
 
-    # Limpar colunas de cliente e telefone
+    # Limpar colunas de cliente e telefone para considerar somente números
     for col in df_temp.columns:
         col_lower = col.strip().lower()
         if any(alvo in col_lower for alvo in ['cliente', 'telefone', 'telemóvel', 'telemovel']):
@@ -108,8 +108,10 @@ def load_sage(url):
             on_bad_lines="skip"
         )
 
+    # Limpar a coluna de cliente do SAGE (procurando especificamente por 'número' e 'cliente')
     for col in df_temp.columns:
-        if col.strip().lower() == 'cliente':
+        col_lower = col.strip().lower()
+        if 'cliente' in col_lower or 'número' in col_lower or 'numero' in col_lower:
             df_temp[col] = df_temp[col].apply(limpar_codigo_cliente)
 
     return df_temp
@@ -193,8 +195,12 @@ try:
 
     # --- CRUZAÇÃO E DATAFRAME FINAL ---
     col_valor_sage = next((c for c in df_sage_filt.columns if 'valor' in c.strip().lower()), None)
-    col_cliente_sage = next((c for c in df_sage_filt.columns if c.strip().lower() == 'cliente'), None)
-    col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower()), None)
+    
+    # Identificar exatamente a coluna de cliente do SAGE (procurando por "número" ou "cliente")
+    col_cliente_sage = next((c for c in df_sage_filt.columns if 'número' in c.strip().lower() or 'numero' in c.strip().lower() or c.strip().lower() == 'cliente'), None)
+    
+    # Identificar a coluna de cliente no df de clientes
+    col_cliente_clientes = next((c for c in df_clientes_filt.columns if 'cliente' in c.strip().lower() or 'número' in c.strip().lower() or 'numero' in c.strip().lower()), None)
 
     df_clientes_vendas = df_clientes_filt.copy()
     if col_valor_sage and col_cliente_sage and col_cliente_clientes:
@@ -206,12 +212,14 @@ try:
         )
         df_sage_filt[col_valor_sage] = pd.to_numeric(df_sage_filt[col_valor_sage], errors='coerce').fillna(0)
         
+        # Agrega a soma do Valor por Número [Clientes] do SAGE
         df_agregado = df_sage_filt.groupby(col_cliente_sage, as_index=False)[col_valor_sage].sum()
         df_agregado.rename(columns={col_valor_sage: 'Venda no Periodo'}, inplace=True)
         
         df_clientes_vendas[col_cliente_clientes] = df_clientes_vendas[col_cliente_clientes].astype(str).str.strip()
         df_agregado[col_cliente_sage] = df_agregado[col_cliente_sage].astype(str).str.strip()
         
+        # Faz o merge usando a coluna correspondente
         df_clientes_vendas = pd.merge(
             df_clientes_vendas, 
             df_agregado, 
@@ -235,7 +243,7 @@ try:
     colunas_desejadas = []
     for col in df_sage_filt.columns:
         c_low = col.strip().lower()
-        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente']):
+        if any(k in c_low for k in ['data', 'doc.', 'documento', 'valor', 'vendedor', 'cliente', 'número', 'numero']):
             colunas_desejadas.append(col)
 
     if colunas_desejadas:
